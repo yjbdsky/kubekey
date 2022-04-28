@@ -21,6 +21,7 @@ import (
 	"github.com/kubesphere/kubekey/pkg/common"
 	"github.com/kubesphere/kubekey/pkg/core/connector"
 	"github.com/pkg/errors"
+	"io/ioutil"
 )
 
 func ResetTmpDir(runtime connector.Runtime) error {
@@ -31,4 +32,12 @@ func ResetTmpDir(runtime connector.Runtime) error {
 		return errors.Wrap(errors.WithStack(err), "reset tmp dir failed")
 	}
 	return nil
+}
+
+func GetCurrentNamespaces(defaultNamespace string) string {
+	data, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err != nil {
+		return defaultNamespace
+	}
+	return string(data)
 }

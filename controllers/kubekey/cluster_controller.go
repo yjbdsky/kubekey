@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/kubesphere/kubekey/pkg/utils"
 	"net/http"
 	"os"
 	"regexp"
@@ -51,8 +52,9 @@ import (
 )
 
 const (
-	CreateCluster = "create cluster"
-	AddNodes      = "add nodes"
+	CreateCluster    = "create cluster"
+	AddNodes         = "add nodes"
+	DefaultNamespace = "kubekey-system"
 )
 
 // ClusterReconciler reconciles a Cluster object
@@ -113,7 +115,7 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Check if the configMap already exists
-	if err := r.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: req.Namespace}, cmFound); err == nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: utils.GetCurrentNamespaces(DefaultNamespace)}, cmFound); err == nil {
 		clusterAlreadyExist = true
 	}
 
@@ -365,7 +367,7 @@ func (r *ClusterReconciler) configMapForCluster(c *kubekeyv1alpha2.Cluster) *cor
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      c.Name,
-			Namespace: c.Namespace,
+			Namespace: utils.GetCurrentNamespaces(DefaultNamespace),
 			Labels:    map[string]string{"kubekey.kubesphere.io/name": c.Name},
 			OwnerReferences: []metav1.OwnerReference{{
 				APIVersion: c.APIVersion,
@@ -387,15 +389,15 @@ func (r *ClusterReconciler) jobForCluster(c *kubekeyv1alpha2.Cluster, action str
 	)
 	if action == CreateCluster {
 		name = fmt.Sprintf("%s-create-cluster", c.Name)
-		args = []string{"create", "cluster", "-f", "/home/kubekey/config/cluster.yaml", "-y", "--in-cluster", "true", "--namespace", c.Namespace}
+		args = []string{"create", "cluster", "-f", "/home/kubekey/config/cluster.yaml", "-y", "--in-cluster", "true"}
 	} else if action == AddNodes {
 		name = fmt.Sprintf("%s-add-nodes", c.Name)
-		args = []string{"add", "nodes", "-f", "/home/kubekey/config/cluster.yaml", "-y", "--in-cluster", "true", "--ignore-err", "true", "--namespace", c.Namespace}
+		args = []string{"add", "nodes", "-f", "/home/kubekey/config/cluster.yaml", "-y", "--in-cluster", "true", "--ignore-err", "true"}
 	}
 
 	podlist := &corev1.PodList{}
 	listOpts := []client.ListOption{
-		client.InNamespace(c.Namespace),
+		client.InNamespace(utils.GetCurrentNamespaces(DefaultNamespace)),
 		client.MatchingLabels{"control-plane": "controller-manager"},
 	}
 	err := r.List(context.TODO(), podlist, listOpts...)
@@ -418,7 +420,7 @@ func (r *ClusterReconciler) jobForCluster(c *kubekeyv1alpha2.Cluster, action str
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: c.Namespace,
+			Namespace: utils.GetCurrentNamespaces(DefaultNamespace),
 			Labels:    map[string]string{"kubekey.kubesphere.io/name": c.Name},
 			OwnerReferences: []metav1.OwnerReference{{
 				APIVersion: c.APIVersion,
@@ -553,7 +555,7 @@ func updateStatusRunner(r *ClusterReconciler, req ctrl.Request, cluster *kubekey
 
 func updateClusterConfigMap(r *ClusterReconciler, ctx context.Context, cluster *kubekeyv1alpha2.Cluster, cmFound *corev1.ConfigMap, log logr.Logger) error {
 	// Check if the configmap already exists, if not create a new one
-	if err := r.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, cmFound); err != nil && !kubeErr.IsNotFound(err) {
+	if err := r.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: utils.GetCurrentNamespaces(DefaultNamespace)}, cmFound); err != nil && !kubeErr.IsNotFound(err) {
 		log.Error(err, "Failed to get ConfigMap", "ConfigMap.Namespace", cmFound.Namespace, "ConfigMap.Name", cmFound.Name)
 		return err
 	} else if err == nil {
@@ -584,7 +586,7 @@ func updateRunJob(r *ClusterReconciler, req ctrl.Request, ctx context.Context, c
 	}
 
 	// Check if the job already exists, if not create a new one
-	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: req.Namespace}, jobFound); err != nil && !kubeErr.IsNotFound(err) {
+	if err := r.Get(ctx, types.NamespacedName{Name: name, Namespace: utils.GetCurrentNamespaces(DefaultNamespace)}, jobFound); err != nil && !kubeErr.IsNotFound(err) {
 		return err
 	} else if err == nil && (jobFound.Status.Failed != 0 || jobFound.Status.Succeeded != 0) {
 		// delete old pods
@@ -858,7 +860,7 @@ func otherClusterDiff(r *ClusterReconciler, ctx context.Context, c *kubekeyv1alp
 	}
 
 	kubeConfigFound := &corev1.ConfigMap{}
-	if err := r.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-kubeconfig", c.Name), Namespace: c.Namespace}, kubeConfigFound); err != nil {
+	if err := r.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-kubeconfig", c.Name), Namespace: utils.GetCurrentNamespaces(DefaultNamespace)}, kubeConfigFound); err != nil {
 		if kubeErr.IsNotFound(err) {
 			return newNodes, nil
 		}

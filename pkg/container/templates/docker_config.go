@@ -31,6 +31,7 @@ var DockerConfig = template.Must(template.New("daemon.json").Parse(
     "max-size": "5m",
     "max-file":"3"
   },
+  "live-restore": true,
   {{- if .Mirrors }}
   "registry-mirrors": [{{ .Mirrors }}],
   {{- end}}
